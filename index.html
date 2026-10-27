@@ -179,23 +179,10 @@ let G = null;          // 現在のゲーム状態
 let muted = false;
 let lastAll = [];      // 直近に取得したランキング全件
 
-/* ============ ランキング（全員で共有：db capability） ============ */
-let dbPromise = null;
-function getDb(){
-  if(!dbPromise){
-    dbPromise = (window.claude && window.claude.use)
-      ? window.claude.use('db').catch(() => null)
-      : Promise.resolve(null);
-  }
-  return dbPromise;
-}
-// 全件を取得。使えない場合は null
-async function fetchScores(){
-  const db = await getDb();
-  if(!db) return null;
-  const snap = await db.collection('scores').limit(1000).get();
-  return snap.docs.filter(d => d.exists).map(d => ({id: d.id, ...d.data()}));
-}
+/* ============ ランキング（ひらいている間だけ保持） ============ */
+const scoreStore = [];
+let scoreSeq = 0;
+async function fetchScores(){ return scoreStore.slice(); }
 function sortScores(list){
   return list.slice().sort((a,b) => (b.score - a.score) || ((a.ts||0) - (b.ts||0)));
 }
@@ -581,9 +568,8 @@ async function saveResult(){
   const name = ($('#nameIn').value.trim() || 'なまえなし').slice(0, 8);
   const entry = {key: G.key, name, score: G.score, correct: G.correct, total: G.qs.length, date: todayStr(), ts: Date.now()};
   try{
-    const db = await getDb();
-    if(!db) throw {code: 'not_granted'};
-    const ref = await db.collection('scores').add(entry);
+    const ref = {id: 's' + (++scoreSeq)};
+    scoreStore.push({id: ref.id, ...entry});
     const all = (await fetchScores()) || [];
     lastAll = all;
     const mine = sortScores(all.filter(d => d.key === G.key));
