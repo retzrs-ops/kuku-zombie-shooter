@@ -548,14 +548,14 @@ function answer(i){
     const gid = G.id;
     setTimeout(() => { if(!G || G.id !== gid) return; G.idx++; advance(); }, 1000);
   } else {
-    G.score -= 3;
+    G.score -= 1;
     updScore();
     G.z.state = 'hurt'; G.z.t0 = performance.now();
     btn.classList.add('bad');
     btn.disabled = true;
     sfxZombie();
-    floatText('-3', 180, 40, '#ff4d6d');
-    setFeedback('ちがうよ！ -3ポイント', 'bad');
+    floatText('-1', 180, 40, '#ff4d6d');
+    setFeedback('ちがうよ！ -1ポイント', 'bad');
   }
 }
 function escapeZombie(){
