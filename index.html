@@ -264,6 +264,11 @@ function sfxShot(){
   tone(1400, t, 0.16, {type:'square', vol:0.09, slide:260, attack:0.005});
   tone(520, t + 0.10, 0.16, {type:'sine', vol:0.3, slide:1100, attack:0.01});
 }
+/* カウントダウンの「ピッ」 */
+function sfxBeep(f, d){
+  if(!ac) return;
+  tone(f, ac.currentTime, d, {type:'square', vol:0.12, attack:0.005});
+}
 /* ゾンビのうなり声 */
 function sfxZombie(){
   if(!ac) return; const t = ac.currentTime;
@@ -453,7 +458,34 @@ function startGame(){
   $('#gameTitle').textContent = `${MODE_LABEL[selMode]}｜${dans.map(n => n + 'の段').join('・')}`;
   $('#score').textContent = '0';
   show('game');
-  advance();
+  startCountdown();
+}
+/* スタート後の5秒カウントダウン（この間は問題もタイマーも動かさない） */
+const COUNTDOWN_MS = 5000;
+function startCountdown(){
+  G.phase = 'count';
+  G.z = null;
+  G.cdEnd = performance.now() + COUNTDOWN_MS;
+  G.cdLast = 0;
+  $('#qNo').textContent = 'じゅんびしてね';
+  $('#qText').textContent = 'もうすぐスタート！';
+  buildChoices(['?','?','?','?']);
+  G.btns.forEach(b => b.disabled = true);
+  const bar = $('#timerBar');
+  bar.style.width = '100%';
+  bar.className = '';
+  setFeedback('ゾンビがやってくるよ…', '');
+}
+function tickCountdown(){
+  const left = G.cdEnd - performance.now();
+  if(left <= 0){
+    sfxBeep(1320, 0.3);
+    advance();
+    return;
+  }
+  const n = Math.ceil(left / 1000);
+  if(n !== G.cdLast){ G.cdLast = n; sfxBeep(880, 0.12); }
+  $('#timerBar').style.width = (left / COUNTDOWN_MS * 100) + '%';
 }
 function advance(){
   if(G.idx >= G.qs.length){ finishGame(); return; }
@@ -843,6 +875,14 @@ function draw(now, dt){
     c.beginPath(); c.moveTo(180, 214); c.lineTo(180, 80); c.stroke();
   }
   drawParts(dt);
+  if(G && G.phase === 'count' && G.cdLast > 0){
+    c.font = '900 96px "Zen Maru Gothic",sans-serif';
+    c.textAlign = 'center';
+    c.lineWidth = 10; c.strokeStyle = '#ffffff';
+    c.strokeText(G.cdLast, 180, 125);
+    c.fillStyle = '#ff4f8b';
+    c.fillText(G.cdLast, 180, 125);
+  }
 }
 
 function loop(now){
@@ -856,6 +896,7 @@ function loop(now){
     bar.className = f > 0.6 ? '' : (f > 0.3 ? 'warn' : 'danger');
     if(el >= 5) escapeZombie();   // 5秒をすぎたらにげていく
   }
+  if(G && G.phase === 'count') tickCountdown();
   tickZombie(now);
   draw(now, dt);
   requestAnimationFrame(loop);
