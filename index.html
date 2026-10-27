@@ -111,6 +111,7 @@ select{font-family:inherit;font-size:15px;padding:8px;border-radius:12px;border:
 
     <button class="btn start" id="startBtn" onclick="startGame()" disabled>スタート！</button>
     <button class="btn sec" onclick="openRanking()">ランキングを見る</button>
+    <p class="info" id="netInfo"></p>
   </section>
 
   <!-- ===== ゲーム ===== -->
@@ -179,9 +180,52 @@ let G = null;          // 現在のゲーム状態
 let muted = false;
 let lastAll = [];      // 直近に取得したランキング全件
 
-/* ============ ランキング（ひらいている間だけ保持） ============ */
+/* ============ ランキング（ひらいている間だけ保持・WebRTCでいまつながっている端末と共有） ============ */
 const scoreStore = [];
-let scoreSeq = 0;
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const KEY_RE = /^(random|asc|desc)\|[1-9](,[1-9]){0,8}$/;
+const TRYSTERO_URL = 'https://cdn.jsdelivr.net/npm/trystero@0.21.5/+esm';
+let netSend = null, netSync = null, netRoom = null;
+
+// ほかの端末から届いた記録は中身を確かめてから入れる
+function addRemote(e){
+  if(!e || typeof e !== 'object') return;
+  const id = String(e.id || '').slice(0, 40);
+  if(!id || !KEY_RE.test(e.key) || scoreStore.length >= 1000) return;
+  if(scoreStore.some(d => d.id === id)) return;
+  const n = v => Number.isFinite(+v) ? Math.trunc(+v) : 0;
+  scoreStore.push({
+    id, key: e.key, name: String(e.name || 'なまえなし').slice(0, 8),
+    score: n(e.score), correct: n(e.correct), total: n(e.total),
+    date: String(e.date || '').slice(0, 10), ts: n(e.ts)
+  });
+  if(document.querySelector('.screen.active').id === 'ranking') refreshRankScreen();
+}
+function setNetInfo(){
+  const el = $('#netInfo');
+  if(!el) return;
+  if(!netRoom){ el.textContent = ''; return; }
+  const n = Object.keys(netRoom.getPeers()).length;
+  el.textContent = n > 0 ? `つながっている たんまつ：${n}だい（ランキングをきょうゆう中）` : 'ほかのたんまつを まっています…';
+}
+async function initNet(){
+  try{
+    const {joinRoom} = await import(TRYSTERO_URL);
+    netRoom = joinRoom({appId: 'retzrs-ops-kuku-zombie-shooter'}, 'main');
+    const [send, get] = netRoom.makeAction('score');
+    const [sync, getSync] = netRoom.makeAction('sync');
+    netSend = send; netSync = sync;
+    get(addRemote);
+    getSync(list => { if(Array.isArray(list)) list.slice(0, 1000).forEach(addRemote); });
+    netRoom.onPeerJoin(peer => { sync(scoreStore, peer); setNetInfo(); });
+    netRoom.onPeerLeave(setNetInfo);
+    setNetInfo();
+  }catch(e){
+    netRoom = null;
+    const el = $('#netInfo');
+    if(el) el.textContent = 'つうしんできませんでした（このたんまつだけで あそべます）';
+  }
+}
 async function fetchScores(){ return scoreStore.slice(); }
 function sortScores(list){
   return list.slice().sort((a,b) => (b.score - a.score) || ((a.ts||0) - (b.ts||0)));
@@ -600,8 +644,10 @@ async function saveResult(){
   const name = ($('#nameIn').value.trim() || 'なまえなし').slice(0, 8);
   const entry = {key: G.key, name, score: G.score, correct: G.correct, total: G.qs.length, date: todayStr(), ts: Date.now()};
   try{
-    const ref = {id: 's' + (++scoreSeq)};
-    scoreStore.push({id: ref.id, ...entry});
+    const ref = {id: newId()};
+    const stored = {id: ref.id, ...entry};
+    scoreStore.push(stored);
+    if(netSend) try{ netSend(stored); }catch(_){}
     const all = (await fetchScores()) || [];
     lastAll = all;
     const mine = sortScores(all.filter(d => d.key === G.key));
@@ -648,6 +694,10 @@ async function openRanking(){
     sel.appendChild(o);
   });
   if(selDans.size > 0) sel.value = curKey();
+  renderRankScreen();
+}
+function refreshRankScreen(){
+  if(!$('#rankSel').value) return openRanking();
   renderRankScreen();
 }
 function renderRankScreen(){
@@ -914,6 +964,7 @@ document.addEventListener('keydown', e => {
 });
 initTitle();
 requestAnimationFrame(loop);
+initNet();
 </script>
 
 </body></html>
